@@ -6,33 +6,59 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
-	"github.com/gosolu/slog"
 	"github.com/gosolu/solu"
 )
 
-var (
-	features = "metric"
+type ctxKeyType struct{}
 
-	enableMetric = false
-	enableTrace  = false
-	enableSlog   = false
+var (
+	ctxMetricKey ctxKeyType
+	ctxTraceKey  ctxKeyType
+	ctxLogKey    ctxKeyType
 )
 
-func init() {
-	fs := strings.Split(features, ",")
-	for _, f := range fs {
-		switch strings.ToLower(f) {
-		case "metric":
-			enableMetric = true
-		case "trace":
-			enableTrace = true
-		case "slog":
-			enableSlog = true
-		}
+// EnableMetric enable http metrics
+func EnableMetric(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxMetricKey, true)
+}
+
+// DisableMetric disable http metrics
+func DisableMetric(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxMetricKey, false)
+}
+
+func EnableTrace(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxTraceKey, true)
+}
+
+func DisableTrace(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxTraceKey, false)
+}
+
+func hasEnabledTrace(ctx context.Context) bool {
+	val := ctx.Value(ctxTraceKey)
+	if val == nil {
+		return false
 	}
+	b, ok := val.(bool)
+	if !ok {
+		return false
+	}
+	return b
+}
+
+func EnableLog(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxLogKey, true)
+}
+
+func DisableLog(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxLogKey, false)
+}
+
+type Logger interface {
+	Log(template string, args ...string)
 }
 
 const (
@@ -68,7 +94,7 @@ func doWithClient(ctx context.Context, req *http.Request, client *http.Client) (
 		return nil, fmt.Errorf("invalid client")
 	}
 
-	if enableTrace {
+	if hasEnabledTrace(ctx) {
 		// add trace header
 		if req.Header.Get(TraceparentHeader) == "" {
 			trace := solu.TraceparentValue(ctx)
@@ -76,32 +102,7 @@ func doWithClient(ctx context.Context, req *http.Request, client *http.Client) (
 		}
 	}
 
-	start := time.Now()
 	res, err := client.Do(req)
-
-	if enableMetric {
-		labels := metricLabels(req, res, time.Now().Sub(start))
-		if err != nil {
-			httpErrorCounter.WithLabelValues(labels...).Inc()
-		} else {
-			httpRequestCounter.WithLabelValues(labels...).Inc()
-		}
-	}
-	if enableSlog {
-		fields := []slog.Field{
-			slog.Str("method", req.Method),
-			slog.Str("host", req.URL.Host),
-			slog.Str("path", req.URL.Path),
-		}
-		if res != nil {
-			fields = append(fields, slog.I("code", res.StatusCode), slog.F64("duration", time.Now().Sub(start).Seconds()))
-		}
-		if err != nil {
-			fields = append(fields, slog.Err(err))
-		}
-		slog.In(ctx).With(fields...).Info("Request")
-	}
-
 	return res, err
 }
 
