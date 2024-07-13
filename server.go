@@ -2,6 +2,7 @@ package shttp
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -101,14 +102,15 @@ var (
 	}
 )
 
-// AddToBaseContext add middlewares to base context
-func AddToBaseContext(hooks ...ContextHook) {
+// AddBaseHooks add middlewares to base context
+func AddBaseHooks(hooks ...ContextHook) {
 	for _, hook := range hooks {
 		gBaseHooks.Add(hook)
 	}
 }
 
-func AddToConnContext(hooks ...ContextHook) {
+// AddConnHooks add connection hooks
+func AddConnHooks(hooks ...ContextHook) {
 	for _, hook := range hooks {
 		gConnHooks.Add(hook)
 	}
@@ -118,7 +120,7 @@ type startupContextType struct{}
 
 var startupContextKey startupContextType
 
-func isValidContext(ctx context.Context) bool {
+func isValidContext(ctx context.Context, ts ...int64) bool {
 	if ctx == nil {
 		return false
 	}
@@ -128,6 +130,8 @@ func isValidContext(ctx context.Context) bool {
 	}
 	if start, ok := val.(int64); !ok || start <= 0 {
 		return false
+	} else if len(ts) > 0 && start != ts[0] {
+		return false
 	}
 	return true
 }
@@ -136,16 +140,20 @@ func ListenAndServe(addr string, handler http.Handler) error {
 	if handler != nil {
 		gRouter.NotFound = handler
 	}
+
+	startTime := time.Now().Unix()
+
 	baseContext := func(ln net.Listener) context.Context {
 		gBaseHooks.Lock()
 		defer gBaseHooks.Unlock()
 
 		ctx := context.Background()
-		ctx = context.WithValue(ctx, startupContextKey, time.Now().Unix())
+		ctx = context.WithValue(ctx, startupContextKey, startTime)
 		for _, fn := range gBaseHooks.hooks {
 			fnCtx := fn(ctx)
 			// check startup context to verify context
-			if val := fnCtx.Value(startupContextKey); val == nil {
+			if !isValidContext(fnCtx, startTime) {
+				slog.WarnContext(ctx, "base hook returns invalid context")
 				continue
 			}
 			ctx = fnCtx
@@ -160,7 +168,8 @@ func ListenAndServe(addr string, handler http.Handler) error {
 		for _, fn := range gConnHooks.hooks {
 			fnCtx := fn(ctx)
 			// check startup context to verify context
-			if val := fnCtx.Value(startupContextKey); val == nil {
+			if !isValidContext(fnCtx, startTime) {
+				slog.WarnContext(ctx, "connection hook returns invalid context")
 				continue
 			}
 			ctx = fnCtx

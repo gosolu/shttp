@@ -1,6 +1,6 @@
 module github.com/gosolu/shttp
 
-go 1.20
+go 1.21
 
 require (
 	github.com/gosolu/solu v0.1.0

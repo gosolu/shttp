@@ -16,8 +16,10 @@ type ctxKeyType struct{}
 var (
 	ctxMetricKey ctxKeyType
 	ctxTraceKey  ctxKeyType
-	ctxLogKey    ctxKeyType
 )
+
+// ContextHook a function hook context with value and return a new context.
+type ContextHook func(context.Context) context.Context
 
 // EnableMetric enable http metrics
 func EnableMetric(ctx context.Context) context.Context {
@@ -47,18 +49,6 @@ func hasEnabledTrace(ctx context.Context) bool {
 		return false
 	}
 	return b
-}
-
-func EnableLog(ctx context.Context) context.Context {
-	return context.WithValue(ctx, ctxLogKey, true)
-}
-
-func DisableLog(ctx context.Context) context.Context {
-	return context.WithValue(ctx, ctxLogKey, false)
-}
-
-type Logger interface {
-	Log(template string, args ...string)
 }
 
 const (

@@ -26,9 +26,6 @@ type IncomeHook func(r *http.Request) context.Context
 
 type ReplyHook func(w http.ResponseWriter, r *http.Request) context.Context
 
-// ContextHook a function hook context with value and return a new context.
-type ContextHook func(context.Context) context.Context
-
 func abortHandleFunc(w http.ResponseWriter, r *http.Request) {
 	abortVal := r.Context().Value(abortContextKey)
 	if abortVal == nil {
